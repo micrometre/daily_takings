@@ -111,7 +111,7 @@ export default function SalesEntry() {
     }, { cash: 0, card: 0, digital: 0 });
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const totals = getTotalsByPaymentMethod();
     const summary = {
@@ -122,74 +122,8 @@ export default function SalesEntry() {
         total: getTotalRevenue()
       }
     };
-    
-    // Generate markdown report
-    const now = new Date();
-    const timestamp = now.toISOString().replace(/[:.]/g, '-').slice(0, -5); // Format: YYYY-MM-DDTHH-MM-SS
-    const filename = `daily-sales-report-${timestamp}.md`;
-    
-    let markdownContent = `# Daily Sales Report\n\n`;
-    markdownContent += `**Generated:** ${now.toLocaleString()}\n`;
-    markdownContent += `**Sales Date:** ${currentDate}\n\n`;
-    
-    markdownContent += `## Products Sold\n\n`;
-    if (summary.products.length === 0) {
-      markdownContent += `No products sold on this date.\n\n`;
-    } else {
-      markdownContent += `| Product | Emoji | Price | Cash | Card | Digital | Total Qty | Revenue |\n`;
-      markdownContent += `|---------|-------|-------|------|------|---------|-----------|----------|\n`;
-      
-      summary.products.forEach(item => {
-        const product = products.find(p => p.id === item.productId);
-        if (product) {
-          const totalQty = item.cash + item.card + item.digital;
-          const revenue = getProductTotal(item);
-          markdownContent += `| ${product.name} | ${product.emoji} | £${product.price.toFixed(2)} | ${item.cash} | ${item.card} | ${item.digital} | ${totalQty} | £${revenue.toFixed(2)} |\n`;
-        }
-      });
-      markdownContent += `\n`;
-    }
-    
-    markdownContent += `## Payment Method Summary\n\n`;
-    markdownContent += `| Payment Method | Amount |\n`;
-    markdownContent += `|----------------|--------|\n`;
-    markdownContent += `| 💵 Cash | £${totals.cash.toFixed(2)} |\n`;
-    markdownContent += `| 💳 Card | £${totals.card.toFixed(2)} |\n`;
-    markdownContent += `| 📱 Digital | £${totals.digital.toFixed(2)} |\n`;
-    markdownContent += `| **💰 Total** | **£${summary.totals.total.toFixed(2)}** |\n\n`;
-    
-    markdownContent += `## Report Details\n\n`;
-    markdownContent += `- **Total Products Sold:** ${summary.products.reduce((sum, item) => sum + item.cash + item.card + item.digital, 0)}\n`;
-    markdownContent += `- **Number of Different Products:** ${summary.products.length}\n`;
-    markdownContent += `- **Highest Revenue Product:** ${summary.products.length > 0 ? products.find(p => p.id === summary.products.reduce((max, item) => getProductTotal(item) > getProductTotal(max) ? item : max).productId)?.name || 'N/A' : 'N/A'}\n`;
-    
-    // Save the markdown file to server
-    try {
-      const response = await fetch('/api/save-report', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          filename: filename,
-          content: markdownContent
-        })
-      });
-
-      const result = await response.json();
-
-      if (response.ok) {
-        console.log('Daily Sales Summary:', summary);
-        console.log(products)
-        alert(`Sales report saved successfully as: ${result.path}`);
-      } else {
-        console.error('Failed to save report:', result.error);
-        alert(`Failed to save report: ${result.error}`);
-      }
-    } catch (error) {
-      console.error('Error saving report:', error);
-      alert('Error saving report. Please try again.');
-    }
+    console.log('Daily Sales Summary:', summary);
+    alert('Sales data recorded! Check console for details.');
   };
 
   const resetForm = () => {
