@@ -111,21 +111,65 @@ export default function SalesEntry() {
     }, { cash: 0, card: 0, digital: 0 });
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    const processedSalesData = salesData
+      .map(item => {
+        const product = products.find(p => p.id === item.productId);
+        return {
+          ...item,
+          name: product ? product.name : 'Unknown Product',
+          quantity: item.cash + item.card + item.digital,
+        };
+      })
+      .filter(item => item.quantity > 0);
+
+    if (processedSalesData.length === 0) {
+      alert('No sales data to record. Please enter quantities for at least one product.');
+      return;
+    }
+
     const totals = getTotalsByPaymentMethod();
     const summary = {
       date: currentDate,
-      products: salesData.filter(item => item.quantity > 0),
+      products: processedSalesData,
       totals: {
         ...totals,
         total: getTotalRevenue()
       }
     };
-    console.log('Daily Sales Summary:', summary);
-    alert('Sales data recorded! Check console for details.');
+
+    try {
+      const response = await fetch('/api/sales', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(summary),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        console.log('Sales data successfully submitted:', result);
+        alert('Sales data recorded successfully!');
+        resetForm();
+      } else {
+        const errorResult = await response.json();
+        console.error('Failed to submit sales data:', errorResult);
+        alert(`Error: ${errorResult.message || 'Something went wrong.'}`);
+      }
+    } catch (error) {
+      console.error('Network or other error:', error);
+      alert('An error occurred while submitting sales data. Please check the console.');
+    }
   };
 
+
+
+  
+
+  
   const resetForm = () => {
     setSalesData(products.map(product => ({
       productId: product.id,
@@ -138,6 +182,9 @@ export default function SalesEntry() {
 
   const paymentTotals = getTotalsByPaymentMethod();
 
+
+
+  
   return (
     <form onSubmit={handleSubmit} className="max-w-6xl mx-auto">
       {/* Date Selection */}
