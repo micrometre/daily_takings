@@ -15,6 +15,15 @@ const { title } = Astro.props;
     <meta charset="UTF-8" />
     <meta name="description" content="Daily Takings - Digital Cashier Records" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Content-Security-Policy" content="
+      default-src 'self';
+      script-src 'self' 'unsafe-inline' 'unsafe-eval' https://apis.google.com https://www.gstatic.com https://accounts.google.com;
+      style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+      font-src 'self' https://fonts.gstatic.com;
+      connect-src 'self' https://www.googleapis.com https://accounts.google.com https://oauth2.googleapis.com;
+      frame-src https://accounts.google.com;
+      img-src 'self' data: https:;
+    " />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>{title}</title>
   </head>

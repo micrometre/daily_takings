@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { FileManager } from './FileManager';
+import GoogleDriveConfigChecker from './GoogleDriveConfigChecker';
 
 interface GoogleDriveBackupProps {
   onStatusChange?: (connected: boolean) => void;
@@ -11,6 +12,8 @@ interface DriveBackupFile {
   modifiedTime: string;
   size: string;
 }
+
+
 
 export default function GoogleDriveBackup({ onStatusChange }: GoogleDriveBackupProps) {
   const [isConnected, setIsConnected] = useState(false);
@@ -29,6 +32,13 @@ export default function GoogleDriveBackup({ onStatusChange }: GoogleDriveBackupP
 
   const checkConnection = () => {
     try {
+      // Check if we're in a secure context (required for Google APIs)
+      if (!window.isSecureContext && window.location.protocol !== 'http:') {
+        setIsConfigured(false);
+        setError('Google Drive requires a secure connection (HTTPS)');
+        return;
+      }
+      
       // First check if Google Drive API is configured
       const hasCredentials = (
         (typeof import.meta !== 'undefined' && import.meta.env && 
@@ -68,7 +78,25 @@ export default function GoogleDriveBackup({ onStatusChange }: GoogleDriveBackupP
       }
     } catch (error) {
       console.error('Connection error:', error);
-      setError(error instanceof Error ? error.message : 'Failed to connect to Google Drive');
+      let errorMessage = 'Failed to connect to Google Drive';
+      
+      if (error instanceof Error) {
+        if (error.message.includes('popup')) {
+          errorMessage = 'Please allow popups for this site and try again.';
+        } else if (error.message.includes('timeout')) {
+          errorMessage = 'Connection timed out. Please check your internet connection.';
+        } else if (error.message.includes('not configured')) {
+          errorMessage = 'Google Drive API credentials are not configured.';
+        } else if (error.message.includes('OAuth origin not authorized')) {
+          errorMessage = `OAuth configuration error: Please add ${window.location.origin} to your Google Cloud Console OAuth 2.0 client authorized JavaScript origins.`;
+        } else if (error.message.includes('idpiframe_initialization_failed')) {
+          errorMessage = `Authorization failed: Please add ${window.location.origin} to your Google Cloud Console OAuth authorized origins.`;
+        } else {
+          errorMessage = error.message;
+        }
+      }
+      
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -208,6 +236,11 @@ export default function GoogleDriveBackup({ onStatusChange }: GoogleDriveBackupP
 
   return (
     <div className="border rounded-lg p-4 bg-white shadow-sm">
+      {/* Configuration Checker - Show when there are errors */}
+      {(error && (error.includes('OAuth') || error.includes('idpiframe') || error.includes('authorized'))) && (
+        <GoogleDriveConfigChecker />
+      )}
+      
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center space-x-2">
           <span className="text-lg">☁️</span>

@@ -4,6 +4,22 @@ import { GoogleDriveAPI } from '../utils/GoogleDriveAPI';
 // Re-export types for convenience
 export type { SalesFile, SalesSummary } from '../types/sales';
 
+
+async function exploreOPFS(dirHandle?: FileSystemDirectoryHandle) {
+  dirHandle = dirHandle || await navigator.storage.getDirectory();
+  for await (const entry of dirHandle.values()) {
+    console.log(`${entry.kind}: ${entry.name}`);
+    if (entry.kind === 'directory') {
+      await exploreOPFS(entry as FileSystemDirectoryHandle); // Recursively explore subdirectories
+    }
+  }
+}
+
+
+
+
+
+
 export class FileManager {
   private static instance: FileManager;
   private root: FileSystemDirectoryHandle | null = null;
@@ -73,6 +89,7 @@ export class FileManager {
 
   async listSalesFiles(): Promise<SalesFile[]> {
     try {
+      exploreOPFS(); // For debugging: log OPFS structure to console
       const root = await this.getRoot();
       const files: SalesFile[] = [];
 

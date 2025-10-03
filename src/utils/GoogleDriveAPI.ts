@@ -27,28 +27,79 @@ export class GoogleDriveAPI {
   async initialize(): Promise<void> {
     return new Promise((resolve, reject) => {
       if (typeof gapi === 'undefined') {
-        // Load Google API script
+        // Load Google API script with better error handling
         const script = document.createElement('script');
         script.src = 'https://apis.google.com/js/api.js';
+        script.async = true;
+        script.defer = true;
+        
         script.onload = () => {
+          try {
+            gapi.load('auth2:client', async () => {
+              try {
+                await gapi.client.init({
+                  apiKey: this.apiKey,
+                  clientId: this.clientId,
+                  discoveryDocs: [this.discoveryDoc],
+                  scope: this.scope
+                });
+                console.log('Google Drive API initialized successfully');
+                console.log('Current origin:', window.location.origin);
+                console.log('Client ID:', this.clientId);
+                resolve();
+              } catch (error) {
+                console.error('Google API client initialization failed:', error);
+                
+                // Provide specific guidance for common errors
+                if (error && typeof error === 'object' && 'error' in error) {
+                  const apiError = error as any;
+                  if (apiError.error === 'idpiframe_initialization_failed') {
+                    console.error('❌ OAuth Configuration Error');
+                    console.error('Current origin:', window.location.origin);
+                    console.error('Please add this origin to your Google Cloud Console OAuth 2.0 client');
+                    console.error('Go to: https://console.cloud.google.com/apis/credentials');
+                    reject(new Error(`OAuth origin not authorized. Please add ${window.location.origin} to your Google Cloud Console OAuth 2.0 client authorized JavaScript origins.`));
+                    return;
+                  }
+                }
+                
+                reject(new Error('Failed to initialize Google Drive API'));
+              }
+            });
+          } catch (error) {
+            console.error('Google API load failed:', error);
+            reject(new Error('Failed to load Google API'));
+          }
+        };
+        
+        script.onerror = (error) => {
+          console.error('Failed to load Google API script:', error);
+          reject(new Error('Failed to load Google API script'));
+        };
+        
+        document.head.appendChild(script);
+      } else {
+        try {
           gapi.load('auth2:client', async () => {
             try {
-              await gapi.client.init({
-                apiKey: this.apiKey,
-                clientId: this.clientId,
-                discoveryDocs: [this.discoveryDoc],
-                scope: this.scope
-              });
+              if (!gapi.client.getToken()) {
+                await gapi.client.init({
+                  apiKey: this.apiKey,
+                  clientId: this.clientId,
+                  discoveryDocs: [this.discoveryDoc],
+                  scope: this.scope
+                });
+              }
               resolve();
             } catch (error) {
+              console.error('Google API re-initialization failed:', error);
               reject(error);
             }
           });
-        };
-        script.onerror = reject;
-        document.head.appendChild(script);
-      } else {
-        resolve();
+        } catch (error) {
+          console.error('Google API already loaded but failed to re-initialize:', error);
+          reject(error);
+        }
       }
     });
   }
@@ -56,22 +107,51 @@ export class GoogleDriveAPI {
   async signIn(): Promise<boolean> {
     try {
       await this.initialize();
+      
       const authInstance = gapi.auth2.getAuthInstance();
+      if (!authInstance) {
+        throw new Error('Google Auth instance not available');
+      }
       
       if (authInstance.isSignedIn.get()) {
         const user = authInstance.currentUser.get();
         const authResponse = user.getAuthResponse();
         this.accessToken = authResponse.access_token;
+        console.log('Already signed in to Google Drive');
         return true;
       } else {
-        const user = await authInstance.signIn();
-        const authResponse = user.getAuthResponse();
+        console.log('Initiating Google Drive sign-in...');
+        
+        // Add a timeout to handle cases where the popup is blocked
+        const signInPromise = authInstance.signIn({
+          prompt: 'select_account'
+        });
+        
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('Sign-in timeout - popup may have been blocked')), 30000);
+        });
+        
+        const user = await Promise.race([signInPromise, timeoutPromise]);
+        const authResponse = (user as any).getAuthResponse();
         this.accessToken = authResponse.access_token;
+        console.log('Successfully signed in to Google Drive');
         return true;
       }
     } catch (error) {
       console.error('Google Drive sign-in error:', error);
-      return false;
+      
+      // Provide more helpful error messages
+      if (error instanceof Error) {
+        if (error.message.includes('popup')) {
+          throw new Error('Sign-in popup was blocked. Please allow popups for this site and try again.');
+        } else if (error.message.includes('timeout')) {
+          throw new Error('Sign-in timed out. Please check your internet connection and try again.');
+        } else {
+          throw new Error(`Sign-in failed: ${error.message}`);
+        }
+      }
+      
+      throw new Error('Failed to sign in to Google Drive');
     }
   }
 
