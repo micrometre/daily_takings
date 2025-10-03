@@ -1,4 +1,5 @@
 import type { SalesFile, SalesSummary } from '../types/sales';
+import { GoogleDriveAPI } from '../utils/GoogleDriveAPI';
 
 // Re-export types for convenience
 export type { SalesFile, SalesSummary } from '../types/sales';
@@ -6,12 +7,61 @@ export type { SalesFile, SalesSummary } from '../types/sales';
 export class FileManager {
   private static instance: FileManager;
   private root: FileSystemDirectoryHandle | null = null;
+  private googleDriveAPI: GoogleDriveAPI | null = null;
 
   static getInstance(): FileManager {
     if (!FileManager.instance) {
       FileManager.instance = new FileManager();
     }
     return FileManager.instance;
+  }
+
+  private constructor() {
+    // Google Drive API will be initialized lazily when needed
+  }
+
+  private initializeGoogleDriveAPI(): GoogleDriveAPI | null {
+    if (this.googleDriveAPI) {
+      return this.googleDriveAPI;
+    }
+
+    try {
+      // Try different ways to access environment variables depending on the build system
+      let clientId = '';
+      let apiKey = '';
+
+      // For Astro (PUBLIC_ prefix for client-side variables)
+      if (typeof import.meta !== 'undefined' && import.meta.env) {
+        clientId = import.meta.env.PUBLIC_GOOGLE_CLIENT_ID || 
+                  import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
+        apiKey = import.meta.env.PUBLIC_GOOGLE_API_KEY || 
+                import.meta.env.VITE_GOOGLE_API_KEY || '';
+      }
+
+      // For Create React App (if process.env is available)
+      if (!clientId && typeof process !== 'undefined' && process.env) {
+        clientId = process.env.REACT_APP_GOOGLE_CLIENT_ID || '';
+        apiKey = process.env.REACT_APP_GOOGLE_API_KEY || '';
+      }
+
+      // For runtime configuration (you can also set these on window object)
+      if (!clientId && typeof window !== 'undefined') {
+        const config = (window as any).APP_CONFIG;
+        if (config) {
+          clientId = config.GOOGLE_CLIENT_ID || '';
+          apiKey = config.GOOGLE_API_KEY || '';
+        }
+      }
+      
+      if (clientId && apiKey) {
+        this.googleDriveAPI = new GoogleDriveAPI(clientId, apiKey);
+        return this.googleDriveAPI;
+      }
+    } catch (error) {
+      console.warn('Failed to initialize Google Drive API:', error);
+    }
+
+    return null;
   }
 
   private async getRoot(): Promise<FileSystemDirectoryHandle> {
@@ -224,5 +274,121 @@ export class FileManager {
         errors: ['Invalid JSON format or corrupted file']
       };
     }
+  }
+
+  // Google Drive Integration Methods
+  async connectToGoogleDrive(): Promise<boolean> {
+    const googleDriveAPI = this.initializeGoogleDriveAPI();
+    if (!googleDriveAPI) {
+      throw new Error('Google Drive API not configured. Please set REACT_APP_GOOGLE_CLIENT_ID and REACT_APP_GOOGLE_API_KEY environment variables.');
+    }
+    
+    try {
+      return await googleDriveAPI.signIn();
+    } catch (error) {
+      console.error('Failed to connect to Google Drive:', error);
+      throw new Error('Failed to connect to Google Drive');
+    }
+  }
+
+  async disconnectFromGoogleDrive(): Promise<void> {
+    const googleDriveAPI = this.initializeGoogleDriveAPI();
+    if (googleDriveAPI) {
+      await googleDriveAPI.signOut();
+    }
+  }
+
+  isConnectedToGoogleDrive(): boolean {
+    const googleDriveAPI = this.initializeGoogleDriveAPI();
+    return googleDriveAPI ? googleDriveAPI.isSignedIn() : false;
+  }
+
+  async syncBackupToGoogleDrive(): Promise<string> {
+    const googleDriveAPI = this.initializeGoogleDriveAPI();
+    if (!googleDriveAPI) {
+      throw new Error('Google Drive API not configured');
+    }
+
+    if (!googleDriveAPI.isSignedIn()) {
+      throw new Error('Not connected to Google Drive');
+    }
+
+    try {
+      const backupJson = await this.createBackup();
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').split('T')[0];
+      const fileName = `daily-takings-backup-${timestamp}.json`;
+      
+      const fileId = await googleDriveAPI.uploadBackup(backupJson, fileName);
+      return fileId;
+    } catch (error) {
+      console.error('Error syncing backup to Google Drive:', error);
+      throw new Error('Failed to sync backup to Google Drive');
+    }
+  }
+
+  async downloadAndSyncBackup(): Promise<void> {
+    try {
+      // Create local backup
+      await this.downloadBackup();
+      
+      // Also sync to Google Drive if connected
+      if (this.isConnectedToGoogleDrive()) {
+        await this.syncBackupToGoogleDrive();
+      }
+    } catch (error) {
+      console.error('Error in download and sync:', error);
+      throw error;
+    }
+  }
+
+  async listGoogleDriveBackups() {
+    const googleDriveAPI = this.initializeGoogleDriveAPI();
+    if (!googleDriveAPI) {
+      throw new Error('Google Drive API not configured');
+    }
+
+    if (!googleDriveAPI.isSignedIn()) {
+      throw new Error('Not connected to Google Drive');
+    }
+
+    return await googleDriveAPI.listBackups();
+  }
+
+  async restoreFromGoogleDriveBackup(fileId: string): Promise<{ success: number; failed: number; errors: string[] }> {
+    const googleDriveAPI = this.initializeGoogleDriveAPI();
+    if (!googleDriveAPI) {
+      throw new Error('Google Drive API not configured');
+    }
+
+    if (!googleDriveAPI.isSignedIn()) {
+      throw new Error('Not connected to Google Drive');
+    }
+
+    try {
+      const backupContent = await googleDriveAPI.downloadBackup(fileId);
+      
+      // Create a temporary file object for the restore function
+      const tempFile = new File([backupContent], 'google-drive-backup.json', {
+        type: 'application/json'
+      });
+      
+      return await this.restoreFromBackup(tempFile);
+    } catch (error) {
+      console.error('Error restoring from Google Drive backup:', error);
+      throw new Error('Failed to restore from Google Drive backup');
+    }
+  }
+
+  async deleteGoogleDriveBackup(fileId: string): Promise<boolean> {
+    const googleDriveAPI = this.initializeGoogleDriveAPI();
+    if (!googleDriveAPI) {
+      throw new Error('Google Drive API not configured');
+    }
+
+    if (!googleDriveAPI.isSignedIn()) {
+      throw new Error('Not connected to Google Drive');
+    }
+
+    return await googleDriveAPI.deleteBackup(fileId);
   }
 }

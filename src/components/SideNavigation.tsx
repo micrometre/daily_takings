@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { FileManager } from './FileManager';
+import GoogleDriveBackup from './GoogleDriveBackup';
 import type { SalesFile } from '../types/sales';
 
 interface SideNavigationProps {
@@ -14,8 +15,24 @@ export default function SideNavigation({ isOpen, onClose, onFileSelect, selected
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [backupLoading, setBackupLoading] = useState(false);
+  const [beforeUnloadTriggered, setBeforeUnloadTriggered] = useState(false);
+  const [googleDriveConnected, setGoogleDriveConnected] = useState(false);
 
   const fileManager = FileManager.getInstance();
+
+  const handleBackupDownload = useCallback(async () => {
+    setBackupLoading(true);
+    try {
+      // Use the enhanced download and sync method
+      await fileManager.downloadAndSyncBackup();
+      alert('Backup downloaded successfully!' + (googleDriveConnected ? ' Also synced to Google Drive.' : ''));
+    } catch (error) {
+      console.error('Backup error:', error);
+      alert('Failed to create backup. Please try again.');
+    } finally {
+      setBackupLoading(false);
+    }
+  }, [fileManager, googleDriveConnected]);
 
   const loadFiles = async () => {
     setLoading(true);
@@ -36,6 +53,52 @@ export default function SideNavigation({ isOpen, onClose, onFileSelect, selected
       loadFiles();
     }
   }, [isOpen]);
+
+  // Add beforeunload event listener to prompt for backup when page is closing
+  useEffect(() => {
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      console.log('BeforeUnload triggered, files count:', files.length);
+      // Check if there are any files that might need backing up
+      if (files.length > 0) {
+        console.log('Showing beforeunload prompt for backup');
+        setBeforeUnloadTriggered(true);
+        // Show confirmation dialog
+        const message = 'You have sales data that could be backed up. Would you like to download a backup before leaving?';
+        event.preventDefault();
+        event.returnValue = message;
+        return message;
+      }
+    };
+
+    // Add a visibilitychange event listener to handle when user returns to page
+    const handleVisibilityChange = () => {
+      if (!document.hidden && beforeUnloadTriggered) {
+        setBeforeUnloadTriggered(false);
+        
+        // Small delay to ensure the page is fully visible
+        setTimeout(() => {
+          if (files.length > 0) {
+            const shouldBackup = confirm(
+              'Welcome back! Would you like to download a backup of your sales data?\n\n' +
+              `You have ${files.length} sales file${files.length !== 1 ? 's' : ''} that could be backed up for safekeeping.`
+            );
+            
+            if (shouldBackup) {
+              handleBackupDownload();
+            }
+          }
+        }, 500);
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [files, beforeUnloadTriggered, handleBackupDownload]);
 
   const handleDelete = async (fileName: string, event: React.MouseEvent) => {
     event.stopPropagation();
@@ -649,19 +712,6 @@ export default function SideNavigation({ isOpen, onClose, onFileSelect, selected
     `;
   };
 
-  const handleBackupDownload = async () => {
-    setBackupLoading(true);
-    try {
-      await fileManager.downloadBackup();
-      alert('Backup downloaded successfully!');
-    } catch (error) {
-      console.error('Backup error:', error);
-      alert('Failed to create backup. Please try again.');
-    } finally {
-      setBackupLoading(false);
-    }
-  };
-
   const handleBackupRestore = () => {
     // Create hidden file input
     const input = document.createElement('input');
@@ -895,22 +945,30 @@ export default function SideNavigation({ isOpen, onClose, onFileSelect, selected
           </div>
 
           {/* Footer */}
-          <div className="p-4 border-t border-gray-200 bg-gray-50">
-            <p className="text-xs text-gray-500 text-center mb-2">
-              {files.length} file{files.length !== 1 ? 's' : ''} found
-            </p>
-            {files.length > 5 && (
-              <div className="text-xs text-center">
-                <p className="text-amber-600 mb-1">💡 Consider backing up your data!</p>
-                <button
-                  onClick={handleBackupDownload}
-                  disabled={backupLoading}
-                  className="text-blue-600 hover:text-blue-800 underline disabled:opacity-50"
-                >
-                  {backupLoading ? 'Creating backup...' : 'Quick backup'}
-                </button>
-              </div>
-            )}
+          <div className="border-t border-gray-200 bg-gray-50">
+            {/* Google Drive Backup Section */}
+            <div className="p-3 border-b border-gray-200">
+              <GoogleDriveBackup onStatusChange={setGoogleDriveConnected} />
+            </div>
+            
+            {/* File Count and Quick Backup */}
+            <div className="p-4">
+              <p className="text-xs text-gray-500 text-center mb-2">
+                {files.length} file{files.length !== 1 ? 's' : ''} found
+              </p>
+              {files.length > 5 && (
+                <div className="text-xs text-center">
+                  <p className="text-amber-600 mb-1">💡 Consider backing up your data!</p>
+                  <button
+                    onClick={handleBackupDownload}
+                    disabled={backupLoading}
+                    className="text-blue-600 hover:text-blue-800 underline disabled:opacity-50"
+                  >
+                    {backupLoading ? 'Creating backup...' : 'Quick backup'}
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
