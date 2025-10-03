@@ -156,7 +156,7 @@ export default function SalesEntry() {
       // Get a handle to the root of the Origin Private File System.
       const root = await navigator.storage.getDirectory();
       // Create a new file handle.
-      const fileName = `sales_${currentDate}.txt`;
+      const fileName = `sales_${currentDate}.json`;
       const fileHandle = await root.getFileHandle(fileName, { create: true });
       console.log(fileHandle);
 

@@ -29,9 +29,9 @@ export class FileManager {
       // TypeScript workaround for OPFS API
       const entries = (root as any).entries();
       for await (const [name, handle] of entries) {
-        if (handle.kind === 'file' && name.startsWith('sales_') && name.endsWith('.txt')) {
+        if (handle.kind === 'file' && name.startsWith('sales_') && name.endsWith('.json')) {
           const file = await handle.getFile();
-          const dateMatch = name.match(/sales_(\d{4}-\d{2}-\d{2})\.txt/);
+          const dateMatch = name.match(/sales_(\d{4}-\d{2}-\d{2})\.json/);
           const date = dateMatch ? dateMatch[1] : 'Unknown';
           
           files.push({
