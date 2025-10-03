@@ -13,6 +13,7 @@ export default function SideNavigation({ isOpen, onClose, onFileSelect, selected
   const [files, setFiles] = useState<SalesFile[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [backupLoading, setBackupLoading] = useState(false);
 
   const fileManager = FileManager.getInstance();
 
@@ -648,6 +649,77 @@ export default function SideNavigation({ isOpen, onClose, onFileSelect, selected
     `;
   };
 
+  const handleBackupDownload = async () => {
+    setBackupLoading(true);
+    try {
+      await fileManager.downloadBackup();
+      alert('Backup downloaded successfully!');
+    } catch (error) {
+      console.error('Backup error:', error);
+      alert('Failed to create backup. Please try again.');
+    } finally {
+      setBackupLoading(false);
+    }
+  };
+
+  const handleBackupRestore = () => {
+    // Create hidden file input
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.style.display = 'none';
+    
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+
+      setBackupLoading(true);
+      try {
+        // Validate backup file first
+        const validation = await fileManager.validateBackupFile(file);
+        
+        if (!validation.valid) {
+          alert(`Invalid backup file:\n${validation.errors.join('\n')}`);
+          return;
+        }
+
+        // Show confirmation with file details
+        const confirmMessage = `Restore backup from ${validation.timestamp ? new Date(validation.timestamp).toLocaleDateString() : 'unknown date'}?\n\nThis will restore ${validation.fileCount || 'unknown'} files.\nExisting files with the same names will be overwritten.\n\nContinue?`;
+        
+        if (!confirm(confirmMessage)) return;
+
+        // Perform restore
+        const results = await fileManager.restoreFromBackup(file);
+        
+        // Show results
+        let message = `Backup restore completed!\n\nSuccessfully restored: ${results.success} files`;
+        if (results.failed > 0) {
+          message += `\nFailed: ${results.failed} files`;
+          if (results.errors.length > 0) {
+            message += `\n\nErrors:\n${results.errors.slice(0, 3).join('\n')}`;
+            if (results.errors.length > 3) {
+              message += `\n... and ${results.errors.length - 3} more errors`;
+            }
+          }
+        }
+        
+        alert(message);
+        
+        // Refresh file list
+        await loadFiles();
+      } catch (error) {
+        console.error('Restore error:', error);
+        alert(`Failed to restore backup: ${error}`);
+      } finally {
+        setBackupLoading(false);
+        document.body.removeChild(input);
+      }
+    };
+    
+    document.body.appendChild(input);
+    input.click();
+  };
+
   const formatFileDate = (file: SalesFile) => {
     return fileManager.formatDate(file.date);
   };
@@ -686,6 +758,22 @@ export default function SideNavigation({ isOpen, onClose, onFileSelect, selected
                 📁 Sales Files
               </h2>
               <div className="flex items-center space-x-2">
+                <button
+                  onClick={handleBackupDownload}
+                  disabled={backupLoading}
+                  className="p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-200 rounded-md transition-colors disabled:opacity-50"
+                  title="Download backup"
+                >
+                  {backupLoading ? '⏳' : '💾'}
+                </button>
+                <button
+                  onClick={handleBackupRestore}
+                  disabled={backupLoading}
+                  className="p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-200 rounded-md transition-colors disabled:opacity-50"
+                  title="Restore from backup"
+                >
+                  📤
+                </button>
                 <button
                   onClick={loadFiles}
                   className="p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-200 rounded-md transition-colors"
@@ -729,7 +817,18 @@ export default function SideNavigation({ isOpen, onClose, onFileSelect, selected
               <div className="p-4 text-center text-gray-500">
                 <div className="text-4xl mb-2">📄</div>
                 <p>No sales files found</p>
-                <p className="text-sm mt-1">Create some sales records to see them here</p>
+                <p className="text-sm mt-1 mb-4">Create some sales records to see them here</p>
+                
+                <div className="border-t border-gray-200 pt-4 mt-4">
+                  <p className="text-xs text-gray-400 mb-2">Have existing data?</p>
+                  <button
+                    onClick={handleBackupRestore}
+                    disabled={backupLoading}
+                    className="text-blue-600 hover:text-blue-800 underline text-sm disabled:opacity-50"
+                  >
+                    📤 Restore from backup
+                  </button>
+                </div>
               </div>
             )}
 
@@ -797,9 +896,21 @@ export default function SideNavigation({ isOpen, onClose, onFileSelect, selected
 
           {/* Footer */}
           <div className="p-4 border-t border-gray-200 bg-gray-50">
-            <p className="text-xs text-gray-500 text-center">
+            <p className="text-xs text-gray-500 text-center mb-2">
               {files.length} file{files.length !== 1 ? 's' : ''} found
             </p>
+            {files.length > 5 && (
+              <div className="text-xs text-center">
+                <p className="text-amber-600 mb-1">💡 Consider backing up your data!</p>
+                <button
+                  onClick={handleBackupDownload}
+                  disabled={backupLoading}
+                  className="text-blue-600 hover:text-blue-800 underline disabled:opacity-50"
+                >
+                  {backupLoading ? 'Creating backup...' : 'Quick backup'}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>

@@ -92,4 +92,137 @@ export class FileManager {
   formatCurrency(amount: number): string {
     return `£${amount.toFixed(2)}`;
   }
+
+  async createBackup(): Promise<string> {
+    try {
+      const files = await this.listSalesFiles();
+      const backupData: any = {
+        timestamp: new Date().toISOString(),
+        version: '1.0',
+        fileCount: files.length,
+        data: []
+      };
+
+      // Read all sales files and include their data
+      for (const file of files) {
+        const salesData = await this.readSalesFile(file.name);
+        if (salesData) {
+          backupData.data.push({
+            fileName: file.name,
+            date: file.date,
+            lastModified: file.lastModified.toISOString(),
+            salesData: salesData
+          });
+        }
+      }
+
+      return JSON.stringify(backupData, null, 2);
+    } catch (error) {
+      console.error('Error creating backup:', error);
+      throw new Error('Failed to create backup');
+    }
+  }
+
+  async downloadBackup(): Promise<void> {
+    try {
+      const backupJson = await this.createBackup();
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').split('T')[0];
+      const fileName = `daily-takings-backup-${timestamp}.json`;
+      
+      // Create and download the backup file
+      const blob = new Blob([backupJson], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      link.style.display = 'none';
+      
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      // Clean up
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error) {
+      console.error('Error downloading backup:', error);
+      throw new Error('Failed to download backup');
+    }
+  }
+
+  async restoreFromBackup(backupFile: File): Promise<{ success: number; failed: number; errors: string[] }> {
+    try {
+      const fileContent = await backupFile.text();
+      const backupData = JSON.parse(fileContent);
+      
+      // Validate backup structure
+      if (!backupData.data || !Array.isArray(backupData.data)) {
+        throw new Error('Invalid backup file format');
+      }
+
+      const results = { success: 0, failed: 0, errors: [] as string[] };
+      
+      // Restore each file
+      for (const item of backupData.data) {
+        try {
+          if (!item.fileName || !item.salesData) {
+            results.failed++;
+            results.errors.push(`Invalid data structure for file: ${item.fileName || 'unknown'}`);
+            continue;
+          }
+
+          // Write the sales data back to OPFS
+          const root = await this.getRoot();
+          const fileHandle = await root.getFileHandle(item.fileName, { create: true });
+          const writable = await fileHandle.createWritable();
+          await writable.write(JSON.stringify(item.salesData, null, 2));
+          await writable.close();
+          
+          results.success++;
+        } catch (error) {
+          results.failed++;
+          results.errors.push(`Failed to restore ${item.fileName}: ${error}`);
+        }
+      }
+
+      return results;
+    } catch (error) {
+      console.error('Error restoring backup:', error);
+      throw new Error(`Failed to restore backup: ${error}`);
+    }
+  }
+
+  async validateBackupFile(file: File): Promise<{ valid: boolean; fileCount?: number; timestamp?: string; errors: string[] }> {
+    try {
+      const content = await file.text();
+      const data = JSON.parse(content);
+      const errors: string[] = [];
+
+      // Check required fields
+      if (!data.timestamp) errors.push('Missing timestamp');
+      if (!data.version) errors.push('Missing version');
+      if (!data.data || !Array.isArray(data.data)) errors.push('Missing or invalid data array');
+      
+      // Check data structure
+      if (data.data) {
+        for (let i = 0; i < Math.min(data.data.length, 5); i++) { // Check first 5 items
+          const item = data.data[i];
+          if (!item.fileName) errors.push(`Item ${i + 1}: Missing fileName`);
+          if (!item.salesData) errors.push(`Item ${i + 1}: Missing salesData`);
+        }
+      }
+
+      return {
+        valid: errors.length === 0,
+        fileCount: data.fileCount || data.data?.length,
+        timestamp: data.timestamp,
+        errors
+      };
+    } catch (error) {
+      return {
+        valid: false,
+        errors: ['Invalid JSON format or corrupted file']
+      };
+    }
+  }
 }
