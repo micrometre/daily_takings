@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import SideNavigation from './SideNavigation';
+import SalesDisplay from './SalesDisplay';
 
 interface Product {
   id: number;
@@ -23,6 +25,11 @@ const defaultProducts: Product[] = [
 export default function SalesEntry() {
   const [products, setProducts] = useState<Product[]>(defaultProducts);
   const [nextProductId, setNextProductId] = useState(7);
+
+  // Navigation state
+  const [viewMode, setViewMode] = useState<'entry' | 'display'>('entry');
+  const [sideNavOpen, setSideNavOpen] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<string | null>(null);
 
   // Custom product form state
   const [showAddProduct, setShowAddProduct] = useState(false);
@@ -188,8 +195,103 @@ export default function SalesEntry() {
 
   const paymentTotals = getTotalsByPaymentMethod();
 
+  const handleFileSelect = (fileName: string) => {
+    setSelectedFile(fileName);
+    if (fileName) {
+      setViewMode('display');
+      setSideNavOpen(false); // Close on mobile after selection
+    }
+  };
+
+  const handleBackToEntry = () => {
+    setViewMode('entry');
+    setSelectedFile(null);
+  };
+
+  // Show display mode if a file is selected
+  if (viewMode === 'display' && selectedFile) {
+    return (
+      <div className="flex h-screen bg-gray-50">
+        <div className={`${sideNavOpen ? 'block' : 'hidden lg:block'}`}>
+          <SideNavigation
+            isOpen={sideNavOpen}
+            onClose={() => setSideNavOpen(false)}
+            onFileSelect={handleFileSelect}
+            selectedFile={selectedFile}
+          />
+        </div>
+        <div className="flex-1 overflow-auto min-w-0">
+          {/* Mobile menu button for display mode */}
+          <div className="lg:hidden bg-white p-4 border-b border-gray-200 sticky top-0 z-30">
+            <div className="flex items-center justify-between">
+              <button
+                onClick={() => setSideNavOpen(true)}
+                className="p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-md transition-colors"
+              >
+                📁 Browse Files
+              </button>
+              <button
+                onClick={handleBackToEntry}
+                className="text-blue-600 hover:text-blue-800 transition-colors"
+              >
+                ← Back to Entry
+              </button>
+            </div>
+          </div>
+          <div className="p-4">
+            <SalesDisplay 
+              fileName={selectedFile} 
+              onBack={handleBackToEntry}
+            />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <form onSubmit={handleSubmit} className="max-w-6xl mx-auto">
+    <div className="flex h-screen bg-gray-50">
+      {/* Show sidebar on desktop when open, or always hidden on mobile unless opened */}
+      <div className={`${sideNavOpen ? 'block' : 'hidden lg:block'}`}>
+        <SideNavigation
+          isOpen={sideNavOpen}
+          onClose={() => setSideNavOpen(false)}
+          onFileSelect={handleFileSelect}
+          selectedFile={selectedFile}
+        />
+      </div>
+      
+      <div className="flex-1 overflow-auto min-w-0">
+        {/* Mobile menu button and header */}
+        <div className="lg:hidden bg-white p-4 border-b border-gray-200 sticky top-0 z-30">
+          <div className="flex items-center justify-between">
+            <button
+              onClick={() => setSideNavOpen(true)}
+              className="p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-md transition-colors"
+            >
+              📁 Browse Files
+            </button>
+            <h1 className="text-lg font-semibold text-gray-800">Daily Sales Entry</h1>
+          </div>
+        </div>
+
+        <form onSubmit={handleSubmit} className="max-w-6xl mx-auto p-4">
+      {/* Desktop header */}
+      <div className="hidden lg:block mb-6">
+        <div className="bg-white p-4 rounded-lg shadow-md">
+          <div className="flex items-center justify-between">
+            <h1 className="text-2xl font-bold text-gray-800">📊 Daily Sales Entry</h1>
+            <button
+              type="button"
+              onClick={() => setSideNavOpen(true)}
+              className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-md transition-colors flex items-center space-x-2"
+            >
+              <span>📁</span>
+              <span>Browse Sales Files</span>
+            </button>
+          </div>
+        </div>
+      </div>
       {/* Date Selection */}
       <div className="bg-white p-6 rounded-lg shadow-md mb-6">
         <label htmlFor="date" className="block text-sm font-medium text-gray-700 mb-2">
@@ -433,6 +535,8 @@ export default function SalesEntry() {
           💾 Record Daily Sales
         </button>
       </div>
-    </form>
+        </form>
+      </div>
+    </div>
   );
 }
