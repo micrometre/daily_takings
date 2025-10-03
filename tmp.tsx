@@ -23,7 +23,7 @@ const defaultProducts: Product[] = [
 export default function SalesEntry() {
   const [products, setProducts] = useState<Product[]>(defaultProducts);
   const [nextProductId, setNextProductId] = useState(7);
-
+  
   // Custom product form state
   const [showAddProduct, setShowAddProduct] = useState(false);
   const [newProduct, setNewProduct] = useState({
@@ -47,8 +47,8 @@ export default function SalesEntry() {
   );
 
   const updateSaleItem = (productId: number, field: keyof Omit<SaleItem, 'productId'>, value: number) => {
-    setSalesData(prev => prev.map(item =>
-      item.productId === productId
+    setSalesData(prev => prev.map(item => 
+      item.productId === productId 
         ? { ...item, [field]: Math.max(0, value) }
         : item
     ));
@@ -110,6 +110,7 @@ export default function SalesEntry() {
       return totals;
     }, { cash: 0, card: 0, digital: 0 });
   };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -129,53 +130,46 @@ export default function SalesEntry() {
       return;
     }
 
-
     const totals = getTotalsByPaymentMethod();
     const summary = {
       date: currentDate,
       products: processedSalesData,
-
       totals: {
         ...totals,
         total: getTotalRevenue()
       }
     };
-    console.log('Daily Sales Summary:', summary);
-    alert('Sales data recorded! Check console for details.');
-
-
 
     try {
-      // Get a handle to the root of the Origin Private File System.
-      const root = await navigator.storage.getDirectory();
-      // Create a new file handle.
-      const fileName = `sales_${currentDate}.txt`;
-      const fileHandle = await root.getFileHandle(fileName, { create: true });
-      console.log(fileHandle);
+      const response = await fetch('/api/sales', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(summary),
+      });
 
-      // Get a writable stream.
-      const writable = await fileHandle.createWritable();
-
-      // Write some content to the file.
-      await writable.write(summary ? JSON.stringify(summary, null, 2) : 'No sales data recorded.');
-
-      // Close the writable stream.
-      await writable.close();
-      // Read the content of the file.
-      const file = await fileHandle.getFile();
-      const content = await file.text();
-      console.log(content); // Output: "Hello, OPFS!"
+      if (response.ok) {
+        const result = await response.json();
+        console.log('Sales data successfully submitted:', result);
+        alert('Sales data recorded successfully!');
+        resetForm();
+      } else {
+        const errorResult = await response.json();
+        console.error('Failed to submit sales data:', errorResult);
+        alert(`Error: ${errorResult.message || 'Something went wrong.'}`);
+      }
     } catch (error) {
-      console.error('Error accessing OPFS:', error);
-    } finally {
-      resetForm();
+      console.error('Network or other error:', error);
+      alert('An error occurred while submitting sales data. Please check the console.');
     }
   };
 
 
 
+  
 
-
+  
   const resetForm = () => {
     setSalesData(products.map(product => ({
       productId: product.id,
@@ -188,6 +182,9 @@ export default function SalesEntry() {
 
   const paymentTotals = getTotalsByPaymentMethod();
 
+
+
+  
   return (
     <form onSubmit={handleSubmit} className="max-w-6xl mx-auto">
       {/* Date Selection */}
@@ -233,7 +230,7 @@ export default function SalesEntry() {
                   className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
-
+              
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Price (£)
@@ -248,7 +245,7 @@ export default function SalesEntry() {
                   className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
-
+              
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Emoji
@@ -275,7 +272,7 @@ export default function SalesEntry() {
                   <option value="🍯">🍯 Other</option>
                 </select>
               </div>
-
+              
               <div className="flex items-end">
                 <button
                   type="button"
@@ -295,7 +292,7 @@ export default function SalesEntry() {
         {products.map((product) => {
           const saleItem = salesData.find(item => item.productId === product.id)!;
           const totalQuantity = saleItem.cash + saleItem.card + saleItem.digital;
-
+          
           return (
             <div key={product.id} className="bg-white p-6 rounded-lg shadow-md">
               <div className="flex items-center justify-between mb-4">
@@ -396,7 +393,7 @@ export default function SalesEntry() {
       {/* Summary Section */}
       <div className="bg-gradient-to-r from-gray-50 to-gray-100 p-6 rounded-lg shadow-md mb-6">
         <h3 className="text-xl font-semibold text-gray-800 mb-4">📊 Daily Summary</h3>
-
+        
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
           <div className="bg-white p-4 rounded-lg text-center">
             <p className="text-sm text-gray-600">💵 Cash Total</p>
